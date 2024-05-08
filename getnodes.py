@@ -1,11 +1,12 @@
 #!/usr/local/meshtastic/bin/python3
 
 from sys import argv
+import random
 import socket
 import time
-import random
 from meshtastic import mesh_pb2
 from google.protobuf.json_format import MessageToDict
+import base64
 import json
 
 START1 = 0x94
@@ -41,7 +42,11 @@ def doconnection(dest: str):
 
         if deserialiser.HasField("node_info"):
             # store node info. Note: deserialiser is a pointer and needs to be dereferenced to add to a list.
-            nodes.append(MessageToDict(deserialiser.node_info))
+            node = MessageToDict(deserialiser.node_info)
+            if "user" in node.keys() and "macaddr" in node["user"].keys():
+                # fix mac address
+                node["user"]["macaddr"] = base64.b64decode(node["user"]["macaddr"]).hex(sep=":")
+            nodes.append(node)
 
         if deserialiser.config_complete_id:
             # stop loop when we get the complete signal
@@ -49,7 +54,6 @@ def doconnection(dest: str):
 
     sock.close()
 
-    # print(nodes)
     print(json.dumps(nodes))
 
 
@@ -67,7 +71,8 @@ def makerequest():
 
 def test():
     print("test start")
-
+    node = mesh_pb2.NodeInfo()
+    print(json.dumps(MessageToDict(node,always_print_fields_with_no_presence=True,)))
     print("test end")
 
 
