@@ -1,0 +1,6 @@
+#!/usr/local/meshtastic/bin/python3
+
+from getnodes import main
+
+if __name__ == "__main__":
+    main()
