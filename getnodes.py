@@ -2,8 +2,9 @@
 
 from sys import argv
 import random
-import socket
-import time
+from connector import connector
+from connector.socket import socketconnector
+from connector.serial import serialconnector
 from meshtastic import mesh_pb2
 from google.protobuf.json_format import MessageToDict
 import base64
@@ -17,44 +18,57 @@ MAX_TO_FROM_RADIO_SIZE = 512
 RUNID = random.randint(0, 0xFFFFFFFF)
 
 
-def doconnection(dest: str):
-    sock = socket.create_connection((dest, 4403))
-    # send wake up
-    buf = bytearray([0xFF] * 8)
-    sock.send(buf)
-    time.sleep(0.1)
+def doconnection(connector: connector):
 
     # send request
-    buf = makerequest()
-    sock.send(buf)
+    connector.send(makerequest())
 
-    # create collection for nodes
-    nodes = []
+    # capture node list
+    nodes = processmessagesfornodes(connector)
 
+    connector.close()
+
+    print(json.dumps(nodes))
+
+
+def processmessagesfornodes(connector: connector):
     # create deserialiserialiser
     deserialiser = mesh_pb2.FromRadio()
 
-    # loop though recieved data
+    # loop though recieved data collecting nodes
+    nodes = []
+    buf = True
     while buf:
-        buf = sock.recv(MAX_TO_FROM_RADIO_SIZE)
-        # strip 4 byte header and deserialiserialise
-        deserialiser.ParseFromString(buf[4:])
+        buf = connector.recv(MAX_TO_FROM_RADIO_SIZE)
+        protobufs = buffertoprotobufs(buf)
+        for pb in protobufs:
+            deserialiser.ParseFromString(pb)
 
-        if deserialiser.HasField("node_info"):
-            # store node info. Note: deserialiser is a pointer and needs to be dereferenced to add to a list.
-            node = MessageToDict(deserialiser.node_info)
-            if "user" in node.keys() and "macaddr" in node["user"].keys():
-                # fix mac address
-                node["user"]["macaddr"] = base64.b64decode(node["user"]["macaddr"]).hex(sep=":")
-            nodes.append(node)
+            if deserialiser.HasField("node_info"):
+                # store node info. Note: deserialiser is a pointer and needs to be dereferenced to add to a list.
+                node = MessageToDict(deserialiser.node_info)
+                if "user" in node.keys() and "macaddr" in node["user"].keys():
+                    # fix mac address
+                    node["user"]["macaddr"] = base64.b64decode(node["user"]["macaddr"]).hex(sep=":")
+                nodes.append(node)
+            if deserialiser.HasField("config_complete_id"):
+                # stop loop when we get the complete signal
+                return nodes
+    # no more data
+    return nodes
 
-        if deserialiser.config_complete_id:
-            # stop loop when we get the complete signal
-            break
 
-    sock.close()
-
-    print(json.dumps(nodes))
+def buffertoprotobufs(buffer):
+    protobufs = []
+    buflen = len(buffer)
+    pbend = 0
+    while pbend < buflen:
+        pblen = (buffer[pbend + 2] << 8) + buffer[pbend + 3]
+        pbstart = pbend + 4
+        pbend = pbstart + pblen
+        protobufs.append(buffer[pbstart:pbend])
+        # print(f"{buflen:-4}{pblen:-4}{pbstart:-4}{pbend:-4}", len(protobufs))
+    return protobufs
 
 
 def makerequest():
@@ -69,17 +83,11 @@ def makerequest():
     return buf
 
 
-def test():
-    print("test start")
-    node = mesh_pb2.NodeInfo()
-    print(json.dumps(MessageToDict(node,always_print_fields_with_no_presence=True,)))
-    print("test end")
-
-
 def main():
     if len(argv) > 1:
-        doconnection(argv[1])
-        # test()
+        doconnection(socketconnector(argv[1]))
+        return
+    doconnection(serialconnector())
 
 
 if __name__ == "__main__":
