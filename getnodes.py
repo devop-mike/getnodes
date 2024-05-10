@@ -5,7 +5,7 @@ import random
 from connector import connector
 from connector.socket import socketconnector
 from connector.serial import serialconnector
-from meshtastic import mesh_pb2
+from meshtastic import mesh_pb2, admin_pb2
 from google.protobuf.json_format import MessageToDict
 import base64
 import json
@@ -19,15 +19,11 @@ RUNID = random.randint(0, 0xFFFFFFFF)
 
 
 def doconnection(connector: connector):
-
     # send request
     connector.send(makerequest())
-
     # capture node list
     nodes = processmessagesfornodes(connector)
-
     connector.close()
-
     print(json.dumps(nodes))
 
 
@@ -73,14 +69,25 @@ def buffertoprotobufs(buffer):
 
 def makerequest():
     # make request packet
-    wantconfig = mesh_pb2.ToRadio()
-    wantconfig.want_config_id = RUNID
+    wantconfig = mesh_pb2.ToRadio(want_config_id=RUNID)
     # encode and get length
     reqdata = wantconfig.SerializeToString()
     reqlen = len(reqdata)
     # combine header(0x94c3), payload size and payload
     buf = START + bytearray([(reqlen >> 8) & 0xFF, reqlen & 0xFF]) + reqdata
     return buf
+
+
+def test():
+    admin = admin_pb2.AdminMessage(set_favorite_node=2747846476)
+    # admin = admin_pb2.AdminMessage(set_favorite_node=3664097024)
+    data = admin.SerializeToString()
+    dlen = len(data)
+    buf = START + bytearray([(dlen >> 8) & 0xFF, dlen & 0xFF]) + data
+    connector = socketconnector("meshtastic.ofc0")
+    # connector = socketconnector("meshtastic.ofc1")
+    connector.send(buf)
+    connector.close()
 
 
 def main():
