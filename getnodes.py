@@ -63,7 +63,6 @@ def buffertoprotobufs(buffer):
         pbstart = pbend + 4
         pbend = pbstart + pblen
         protobufs.append(buffer[pbstart:pbend])
-        # print(f"{buflen:-4}{pblen:-4}{pbstart:-4}{pbend:-4}", len(protobufs))
     return protobufs
 
 
